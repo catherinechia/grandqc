@@ -206,12 +206,14 @@ abd then same as the usage above.
 
 ## Integration in other packages
 
-Integration into other packages
-
 If you want to integrate GrandQC into your package, you must do the following:
-	1.	Citation / attribution
+
+1.	Citation / attribution
+   
 Wherever your package references, bundles, or uses GrandQC (documentation, README, CLI help, UI, and/or source code comments), include a clear and unambiguous statement specifying how to cite GrandQC (provide the exact citation text and/or a link to the official citation instructions).
-	2.	License notice
+	
+2.	License notice
+
 Include a clear and unambiguous statement that GrandQC is distributed under a non-commercial license, and that use is subject to the terms of the original GrandQC license (link to the original license text).
 
 ## Citation
