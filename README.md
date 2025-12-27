@@ -204,9 +204,19 @@ cd 02_WSI_inference_OME_TIFF_QC
 
 abd then same as the usage above.
 
+## Integration in other packages
+
+Integration into other packages
+
+If you want to integrate GrandQC into your package, you must do the following:
+	1.	Citation / attribution
+Wherever your package references, bundles, or uses GrandQC (documentation, README, CLI help, UI, and/or source code comments), include a clear and unambiguous statement specifying how to cite GrandQC (provide the exact citation text and/or a link to the official citation instructions).
+	2.	License notice
+Include a clear and unambiguous statement that GrandQC is distributed under a non-commercial license, and that use is subject to the terms of the original GrandQC license (link to the original license text).
+
 ## Citation
 
-If you use GrandQC or benchmark in your research, please consider citing our [paper](https://www.nature.com/articles/s41467-024-54769-y)
+If you use GrandQC or benchmark in your research, please cite our [paper](https://www.nature.com/articles/s41467-024-54769-y)
 
 Weng Z. et al. "GrandQC: a comprehensive solution to quality control problem in digital pathology"
 
