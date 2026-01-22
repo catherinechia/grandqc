@@ -9,6 +9,8 @@ import zarr
 from skimage.io import imread
 import cv2
 
+import wholeslidedata as ws
+
 # DEVICE
 DEVICE = 'cuda'
 '''
@@ -20,7 +22,7 @@ DEVICE = 'cuda'
 # MODEL TISSUE DETECTION:
 MODEL_TD_DIR = './models/td/'
 MODEL_TD_NAME = 'Tissue_Detection_MPP10.pth'
-MPP_MODEL_TD = 10
+MPP_MODEL_TD = 10 #
 M_P_S_MODEL_TD = 512
 ENCODER_MODEL_TD = 'timm-efficientnet-b0'
 ENCODER_MODEL_TD_WEIGHTS = 'imagenet'
@@ -37,12 +39,12 @@ colors = [[50, 50, 250],    # BLUE: TISSUE
 parser = argparse.ArgumentParser()
 parser.add_argument('--slide_folder', dest='slide_folder', help='path to WSIs', type=str)
 parser.add_argument('--output_dir', dest='output_dir', help='path to output folder', type=str)
-parser.add_argument('--mpp', dest='mpp', help='mpp of the slide', default=0.2425, type=float)
+#parser.add_argument('--mpp', dest='mpp', help='mpp of the slide', default=0.2425, type=float)
 args = parser.parse_args()
 
 SLIDE_DIR = args.slide_folder
 OUTPUT_DIR = args.output_dir
-mpp = args.mpp
+#mpp = args.mpp
 
 # Create output dirs
 tis_det_dir_mask = os.path.join(OUTPUT_DIR, 'tis_det_mask/')
@@ -81,12 +83,19 @@ for slide_name in slide_names:
         slide_tiff = imread(path_slide, aszarr=True)
         slide = zarr.open(slide_tiff, mode='r')
 
-        channel, h_l0, w_l0 = slide[0].shape
-        image_or = np.array(slide[2])
+        # Added to get MPP from OME-TIFF
+        wsi = ws.WholeSlideImage(path_slide)
+        mpp = wsi.spacings[0]
+        del wsi
+
+        #channel, h_l0, w_l0 = slide[0].shape
+        h_l0, w_l0, channel = slide[2].shape # 5x 2.0mpp
+        #np.array(slide[2])
+        image_or = np.array(slide[2]) # 5x 2.0mpp
         if channel != 3:
             h_l0, w_l0, _ = slide[0].shape
-        else:
-            image_or = np.transpose(image_or, (1, 2, 0))
+        # else:
+        #     image_or = np.transpose(image_or, (1, 2, 0))
 
         reduction_factor = MPP_MODEL_TD / mpp
 
@@ -127,16 +136,16 @@ for slide_name in slide_names:
                     image_work = image.crop((w * p_s, height - p_s, (w + 1) * p_s, height))
                 else:
                     image_work = image.crop((width - p_s, height - p_s, width, height))
-
+                #
                 image_pre = get_preprocessing(image_work, preprocessing_fn)
                 x_tensor = torch.from_numpy(image_pre).to(DEVICE).unsqueeze(0)
                 predictions = model.predict(x_tensor)
                 predictions = (predictions.squeeze().cpu().numpy())
-
+                #
                 mask = np.argmax(predictions, axis=0).astype('int8')
-
+                #
                 class_mask = make_class_map(mask, colors)
-
+                #
                 if w == 0:
                     temp_image = mask
                     temp_image_class_map = class_mask
@@ -159,19 +168,14 @@ for slide_name in slide_names:
             else:
                 end_image = np.concatenate((end_image, temp_image), axis=0)
                 end_image_class_map = np.concatenate((end_image_class_map, temp_image_class_map), axis=0)
-
-        Image.fromarray(end_image).save(os.path.join(tis_det_dir_mask, slide_name + '_MASK.png'))
+            #
+        #Image.fromarray(end_image).save(os.path.join(tis_det_dir_mask, slide_name + '_MASK.png')) #https://github.com/cpath-ukk/grandqc/issues/18
+        Image.fromarray((end_image * 255).astype(np.uint8), mode='L').save(os.path.join(tis_det_dir_mask, slide_name + '_MASK.png'))
         Image.fromarray(end_image_class_map).save(os.path.join(tis_det_dir_mask_col, slide_name + '_MASK_COL.png'))
-        overlay = cv2.addWeighted(np.array(image), OVER_IMAGE, end_image_class_map, OVER_MASK, 0)
+        #overlay = cv2.addWeighted(np.array(image), OVER_IMAGE, end_image_class_map, OVER_MASK, 0)
+        overlay = cv2.addWeighted(np.array(image_work), OVER_IMAGE, end_image_class_map, OVER_MASK, 0)
         overlay = Image.fromarray(overlay)
         overlay.save(os.path.join(tis_det_dir_over, slide_name + '_OVERLAY.jpg'))
         slide_tiff.close()
     except Exception as e:
         print('Problem with a file:', slide_name)
-
-
-
-
-
-
-
