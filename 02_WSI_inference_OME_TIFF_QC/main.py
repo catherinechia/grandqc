@@ -19,6 +19,8 @@ from tqdm import tqdm
 import argparse
 Image.MAX_IMAGE_PIXELS = 1000000000
 
+import wholeslidedata as ws
+
 # DEVICE
 DEVICE = 'cuda'
 '''
@@ -32,7 +34,7 @@ parser.add_argument('--slide_folder', dest='slide_folder', help='path to WSIs', 
 parser.add_argument('--output_dir', dest='output_dir', help='path to output folder', type=str)
 parser.add_argument('--create_geojson', dest='create_geojson', help='create geojson for QC or not', default="Y", type=str)
 parser.add_argument('--start', dest='start', default=0, help='start num of WSIs', type=int)
-parser.add_argument('--mpp_model', dest='MPP_MODEL', default=1.5,
+parser.add_argument('--mpp_model', dest='mpp_model', default=1.0,
                     help='MPP of the training model, should only be 1.0, 1.5, 2.0', type=float)
 parser.add_argument('--end', dest='end', default=-1, help='end num of WSIs', type=int)
 parser.add_argument('--ol_factor', dest='ol_factor', default=10,
@@ -40,13 +42,13 @@ parser.add_argument('--ol_factor', dest='ol_factor', default=10,
 
 args = parser.parse_args()
 
-MPP_MODEL = args.MPP_MODEL
-start = args.start
-end = args.end
+MPP_MODEL = args.mpp_model
 SLIDE_DIR = args.slide_folder
 OUTPUT_DIR = args.output_dir
 OVERLAY_FACTOR = args.ol_factor
 create_geojson = args.create_geojson
+start = args.start
+end = args.end
 
 # MODEL(S)
 # MODEL 1: Artifacts detection
@@ -69,7 +71,7 @@ if end == -1:
     end = len(os.listdir(SLIDE_DIR))
 
 if create_geojson == "Y":
-    geojson_root = os.path.join(OUTPUT_DIR, "geojson_qc")
+    geojson_root = os.path.join(OUTPUT_DIR, "qc_geojson")
     os.makedirs(geojson_root, exist_ok=True)
 
 # OUTPUT (TEXT)
@@ -98,9 +100,9 @@ results = open(path_result, "a+")
 results.write(output_header)
 results.close()
 
-maps_dir = os.path.join(OUTPUT_DIR, 'maps_qc')
-overlay_dir = os.path.join(OUTPUT_DIR, 'overlays_qc')
-mask_dir = os.path.join(OUTPUT_DIR, 'mask_qc')
+maps_dir = os.path.join(OUTPUT_DIR, 'qc_maps')
+overlay_dir = os.path.join(OUTPUT_DIR, 'qc_overlays')
+mask_dir = os.path.join(OUTPUT_DIR, 'qc_masks')
 
 try:
     os.makedirs(maps_dir)
@@ -127,23 +129,29 @@ for slide_name in slide_names[start:end]:
     slide = slide_original[0]
 
     # GET SLIDE INFO
-    p_s, patch_n_w_l0, patch_n_h_l0, mpp, w_l0, h_l0 = slide_info(slide, M_P_S_MODEL_1, MPP_MODEL)
+    # Added to get MPP from OME-TIFF
+    wsi = ws.WholeSlideImage(path_slide)
+    mpp = wsi.spacings[0]
+    del wsi
+    p_s, patch_n_w_l0, patch_n_h_l0, w_l0, h_l0 = slide_info(slide, mpp, M_P_S_MODEL_1, MPP_MODEL)
 
     # LOAD TISSUE DETECTION MAP
     try:
-        tis_det_map = Image.open(OUTPUT_DIR + "tis_det_mask/" + slide_name + '_MASK.png')
+        tis_det_map = Image.open(os.path.join(OUTPUT_DIR, "tis_det_mask", slide_name + '_MASK.png'))
         '''
         Tissue detection map is generated on MPP = 10
         This map is used for on-fly control of the necessity of model inference.
         Two variants: reduced version with perfect correlation or full version scaled to working MPP of the tumor detection model
         Classes: 0 - tissue, 1 - background
         '''
+        tis_det_map = tis_det_map.convert("L") # conver to (8-bit grayscale)
         tis_det_map_mpp = np.array(tis_det_map.resize((int(w_l0 * mpp / MPP_MODEL),
                                                        int(h_l0 * mpp / MPP_MODEL)), Image.Resampling.LANCZOS))
     except:
         tis_det_map_mpp = np.zeros((int(w_l0 * mpp / MPP_MODEL), int(h_l0 * mpp / MPP_MODEL)))
 
     try:
+        # Segment background class (class 7)
         map, full_mask = slide_process_single(model, tis_det_map_mpp, slide, patch_n_w_l0, patch_n_h_l0, p_s,
                                               M_P_S_MODEL_1, colors, ENCODER_MODEL_1,
                                               ENCODER_MODEL_1_WEIGHTS, DEVICE, BACK_CLASS)
@@ -155,6 +163,10 @@ for slide_name in slide_names[start:end]:
     map.save(map_path)
 
     mask_path = os.path.join(mask_dir, slide_name + "_mask.png")
+    # Convert full_mask to uint8 if necessary
+    if full_mask.dtype != np.uint8:
+        full_mask = full_mask.astype(np.uint8)
+    # Save the mask using cv2
     cv2.imwrite(mask_path, full_mask)
     if create_geojson == "Y":
         geojson_path = os.path.join(geojson_root, slide_name + '.geojson')
